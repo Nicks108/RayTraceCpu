@@ -1,0 +1,100 @@
+#version 430
+
+layout (local_size_x = 1, local_size_y = 1) in;
+
+
+
+struct Ray{
+	vec3 Direction; //b
+	vec3 Origin; //a
+
+	
+};
+layout(std140, binding=0) coherent buffer DestBuffer
+{
+	Ray Rays[100];
+}OutBuffer;
+
+layout (std140, binding=1) coherent buffer Camera
+{
+	vec3 horizontal;
+	vec3 vertical;
+	vec3 lower_left_corner;
+	float AspectRatio;
+	vec3 m_Position;
+	vec3 m_Target;
+	vec3 m_Up;
+	float M_LenseRadius;
+	vec3 m_u;
+	vec3 m_v;
+	vec3 m_w;
+}CamerDataBuffer;
+
+
+
+uniform float iTime;
+uniform int ScreenSizeX;
+uniform int ScreenSizeY;
+uniform int ScreenYPos;
+uniform int ScreenXPos;
+
+
+
+
+float PHI = 1.61803398874989484820459 * 00000.1; // Golden Ratio   
+float PI  = 3.14159265358979323846264 * 00000.1; // PI
+float SQ2 = 1.41421356237309504880169 * 10000.0; // Square Root of Two
+
+float gold_noise(in vec2 coordinate, in float seed){
+      return fract(tan(distance(coordinate*(seed+PHI), vec2(PHI, PI)))*SQ2);
+}
+
+
+
+vec3 RandomInUnitDisk()
+{
+	vec3 _output;
+
+	/*std::random_device rd;
+	std::mt19937 gen(rd());
+	std::uniform_real_distribution<float> dist(0, 1);*/
+	float u = gold_noise(gl_GlobalInvocationID.xy, iTime+SQ2);
+
+	float x1 = gold_noise(gl_GlobalInvocationID.xy, iTime+PI);
+	float x2 = gold_noise(gl_GlobalInvocationID.xy, iTime+PHI);
+	//float x3 = dist(gen);
+
+	float mag = sqrt(x1*x1 + x2 * x2 + 0);
+	x1 /= mag;
+	x2 /= mag;
+	//x3 /= mag;
+
+	
+	float c = pow(u,float(1/3));
+	_output = vec3(x1*c, x2*c, 0);
+
+	return _output;
+}
+
+
+
+Ray GetRay(float u, float v) 
+{ 
+	vec3 rd = CamerDataBuffer.M_LenseRadius* RandomInUnitDisk();
+	vec3 offset = CamerDataBuffer.m_u * rd.x + CamerDataBuffer.m_v * rd.y;
+	return Ray(CamerDataBuffer.m_Position +offset, CamerDataBuffer.lower_left_corner + u * CamerDataBuffer.horizontal + v * CamerDataBuffer.vertical - CamerDataBuffer.m_Position-offset);
+}
+
+void main ()
+{
+
+//gl_GlobalInvocationID.y
+	float u = float(ScreenXPos +gold_noise(gl_GlobalInvocationID.xy, iTime+SQ2)) / float(ScreenSizeX);
+	float v = float(ScreenYPos +gold_noise(gl_GlobalInvocationID.xy, iTime+PI)) /float(ScreenSizeY);
+	
+	Ray r;
+	r.Direction.x = CamerDataBuffer.horizontal.x;
+	r.Direction.y = CamerDataBuffer.horizontal.y;
+	r.Direction.z = CamerDataBuffer.horizontal.z;
+	OutBuffer.Rays[gl_GlobalInvocationID.x] =GetRay(u,v);
+}
